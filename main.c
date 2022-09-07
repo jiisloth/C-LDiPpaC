@@ -6,8 +6,18 @@
 #define HROWS 6
 #define MAXITER 5
 
+#define H2ROWS 4
+#define MSGLEN2 8
+
+#define true 1
+#define false 0
+
 double message[MSGLEN] = {-1.3436883, 0.92061442, 1.00983062, -0.06886619, 1.71192052, -1.15801087, -1.06911068, 1.96699053, 1.35679392, 1.79001563, -1.09911672, 1.45552054, -0.87099213, 0.10570174, -0.58468938};
 int H[HROWS][MSGLEN] = {{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0}, {0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0}, {0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1}, {0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1}, {0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0}, {1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0}};
+
+int H2[H2ROWS][MSGLEN2] = {{0, 1, 0, 1, 1, 0, 0, 1},{1, 1, 1, 0, 0, 1, 0, 0},{0, 0, 1, 0, 0, 1, 1, 1},{1, 0, 0, 1, 1, 0, 1, 0}};
+int message2[MSGLEN2] = {1,1,0,1,0,1,0,1};
+//{{1, 1, 0, 0, 0, 0, 0},{0, 1, 1, 1, 0, 0, 0},{0, 0, 1, 1, 0, 0, 0}, {0, 0, 0, 1, 1, 0, 0}, {0, 0, 0, 0, 1, 1, 0}, {0, 0, 0, 1, 0, 0, 1}};
 
 
 int calculateBits(double p0[], double p1[]){
@@ -24,7 +34,8 @@ int calculateBits(double p0[], double p1[]){
     return 0;
 }
 
-int sumProductDecoding() {
+
+void sumProductDecoding() {
     double p0[MSGLEN];
     double p1[MSGLEN];
     double P0[HROWS][MSGLEN];
@@ -134,19 +145,87 @@ int sumProductDecoding() {
             }
 
         }
-        int b = calculateBits(p0, p1); // just calculate bits and print em here.
+        int b = calculateBits(p0, p1);
+
+        // just calculate bits and print em here.
 
         // need to check for changes and terminate if none.
 
 
     }
+}
 
-    return a;
+void hardDecisionDecoding(){
+    for (int iter = 0; iter < MAXITER; ++iter) {
+        int out[MSGLEN2];
+        for (int i = 0; i < MSGLEN2; ++i) {
+            out[i] = message2[i];
+        }
+        int satisfied = true;
+        int c_nodes[H2ROWS] = {0};
+        for (int i = 0; i < H2ROWS; ++i) {
+            for (int j = 0; j < MSGLEN2; ++j) {
+                if (H2[i][j] == 1){
+                    // TODO: fix this with or statement / use single bits instead of int..
+                    c_nodes[i] += message2[j];
+                    if (c_nodes[i] == 2){
+                        c_nodes[i] = 0;
+                    }
+                }
+            }
+            for (int j = 0; j < MSGLEN2; ++j) {
+                if (H2[i][j] == 1) {
+                    int test = message2[j] + c_nodes[i];
+                    if (test == 2){
+                        test = 0;
+                    }
+                    out[j] += test;
+
+                }
+            }
+            if (c_nodes[i] == 1){
+                satisfied = false;
+            }
+        }
+        if (satisfied){
+            break;
+        }
+        for (int i = 0; i < H2ROWS; ++i) {
+            printf("%d ", c_nodes[i]);
+        }
+        printf("\n");
+        for (int j = 0; j < MSGLEN2; ++j) {
+            int div = 1;
+            for (int i = 0; i < H2ROWS; ++i) {
+                div += H2[i][j];
+            }
+            double v = (double)out[j] /(double) div;
+            if (v > 0.5){
+                out[j] = 1;
+            } else {
+                out[j] = 0;
+            }
+        }
+        for (int i = 0; i < MSGLEN2; ++i) {
+            message2[i] = out[i];
+        }
+        for (int i = 0; i < MSGLEN2; ++i) {
+            printf("%d ", message2[i]);
+        }
+        printf("\n");
+    }
+    printf("Final result:\n");
+    for (int i = 0; i < MSGLEN2; ++i) {
+        printf("%d ", message2[i]);
+    }
+    printf("\n");
 }
 
 
-
 int main() {
-    int a = sumProductDecoding();
+    printf("Sum product:\n");
+    sumProductDecoding();
+    printf("Hard decision:\n");
+    hardDecisionDecoding();
     return a;
 }
