@@ -20,33 +20,36 @@ int message2[MSGLEN2] = {1,1,0,1,0,1,0,1};
 //{{1, 1, 0, 0, 0, 0, 0},{0, 1, 1, 1, 0, 0, 0},{0, 0, 1, 1, 0, 0, 0}, {0, 0, 0, 1, 1, 0, 0}, {0, 0, 0, 0, 1, 1, 0}, {0, 0, 0, 1, 0, 0, 1}};
 
 
-int calculateBits(double p0[], double p1[]){
-    int bits[MSGLEN];
+void calculateBits(double p0[], double p1[], int *bits){
     for (int i = 0; i < MSGLEN; ++i) {
         if (p0[i] > p1[i]){
             bits[i] = 0;
         } else {
             bits[i] = 1;
         }
-        printf("%d ", bits[i]);
     }
-    printf("\n");
-    return 0;
 }
 
+void print_bits(int* bits){
+    for(int loop = 0; loop < MSGLEN; loop++)
+        printf("%d", bits[loop]);
+    printf("\n");
+}
 
 void sumProductDecoding() {
     double p0[MSGLEN];
     double p1[MSGLEN];
     double P0[HROWS][MSGLEN];
     double P1[HROWS][MSGLEN];
+    int bits[MSGLEN];
     // init arrays
     for (int i = 0; i < MSGLEN; ++i) {
         p1[i] = 1 / (1 + exp((2 * message[i]) / SIGMA));
         p0[i] = 1 - p1[i];
     }
     // get original message
-    int a = calculateBits(p0, p1);
+    calculateBits(p0, p1, bits);
+    print_bits(bits);
     // init P matrix's
     for (int i = 0; i < HROWS; ++i) {
         for (int j = 0; j < MSGLEN; ++j) {
@@ -145,15 +148,13 @@ void sumProductDecoding() {
             }
 
         }
-        int b = calculateBits(p0, p1);
-
-        // just calculate bits and print em here.
-
-        // need to check for changes and terminate if none.
+        calculateBits(p0, p1, bits);
+        print_bits(bits);
 
 
     }
 }
+
 
 void hardDecisionDecoding(){
     for (int iter = 0; iter < MAXITER; ++iter) {
@@ -167,7 +168,7 @@ void hardDecisionDecoding(){
             for (int j = 0; j < MSGLEN2; ++j) {
                 if (H2[i][j] == 1){
                     // TODO: fix this with or statement / use single bits instead of int..
-                    c_nodes[i] += message2[j];
+                    c_nodes[i] ^= message2[j];
                     if (c_nodes[i] == 2){
                         c_nodes[i] = 0;
                     }
@@ -225,7 +226,7 @@ void hardDecisionDecoding(){
 int main() {
     printf("Sum product:\n");
     sumProductDecoding();
-    printf("Hard decision:\n");
-    hardDecisionDecoding();
-    return a;
+    //printf("Hard decision:\n");
+    //hardDecisionDecoding();
+    return 0;
 }
