@@ -9,7 +9,7 @@ int main(){
     int errors = 0;
     for (int t = 0; t < TESTCASECOUNT; t++){
 
-        printf("\nTestcase: %d", t);
+        printf("\nTestcase: %d, ", t);
 
         errors += run_case(*cases[t]);
     }
@@ -65,6 +65,7 @@ int run_case(Testcase custard){
         printf("%d", output[i]);
     }
     if (errors > 0) {
+    	printf("\n");
         for (i = 0; i < MSGLEN; i++) {
             if (errorline[i] == 1) {
                 printf("*");
@@ -72,10 +73,10 @@ int run_case(Testcase custard){
                 printf(" ");
             }
         }
-        printf("- Decoding failed with %d errors!\n", errors);
+        printf("\n- Decoding failed with %d errors!\n", errors);
         return 1;
     } else {
-        printf("- No errors found!\n");
+        printf("\n- Decoding successful!\n");
         return 0;
     }
 }

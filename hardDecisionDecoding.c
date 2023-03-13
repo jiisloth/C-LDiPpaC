@@ -1,54 +1,75 @@
-#define MSGLEN 50
-#define HROWS 20
+#include "hmatrix.h"
 
 
-#define true 1
-#define false 0
+#define HARDMAXITER 16
 
 
-void hardDecisionDecoding(int max_iter, int h_matrix[HROWS][MSGLEN], int message[MSGLEN], int output[MSGLEN], int *iterations){
-    //returns -1 if max_iter is reached
-    *iterations = -1;
 
-    for (int iter = 0; iter < max_iter; ++iter) {
-        for (int i = 0; i < MSGLEN; ++i) {
-            output[i] = message[i];
-        }
-        int satisfied = true;
-        int c_nodes[HROWS] = {0};
-        for (int i = 0; i < HROWS; ++i) {
-            for (int j = 0; j < MSGLEN; ++j) {
-                if (h_matrix[i][j] == 1){
-                    c_nodes[i] ^= message[j];
+void hardDecisionDecoding(int max_iter, int message[BLOCKSIZE], int output[BLOCKSIZE], int *iterations){
+
+#pragma HLS INTERFACE mode=s_axilite port=iterations
+#pragma HLS INTERFACE mode=s_axilite port=output
+#pragma HLS INTERFACE mode=s_axilite port=message
+#pragma HLS INTERFACE mode=s_axilite port=max_iter
+#pragma HLS INTERFACE mode=s_axilite port=return
+
+
+    int c;
+    int i;
+    int j;
+
+    int maxi = max_iter;
+    int itercount = 0;
+
+    int v_nodes[BLOCKSIZE];
+    int decode[BLOCKSIZE];
+
+    for (j = 0; j < BLOCKSIZE; ++j) {
+    	decode[j] = message[j];
+        v_nodes[j] = decode[j];
+    }
+
+
+
+    for (int iter = 0; iter < HARDMAXITER; ++iter) {
+    	if (iter < maxi){
+    	    int satisfied = 0;
+            for (c = 0; c < CNODES; ++c) {
+                int c_node = 0;
+                for (i = 0; i < PARITYCHECKS; ++i) {
+                	for (j = 0; j < BLOCKSIZE; ++j) {
+                        if (h_matrix[j][i] == c) {
+                            c_node ^= decode[j];
+                        }
+                    }
+                }
+                satisfied |= c_node;
+                for (i = 0; i < PARITYCHECKS; ++i) {
+                	for (j = 0; j < BLOCKSIZE; ++j) {
+                        if (h_matrix[j][i] == c) {
+                            v_nodes[j] += decode[j]^c_node;
+                        }
+                    }
                 }
             }
-            for (int j = 0; j < MSGLEN; ++j) {
-                if (h_matrix[i][j] == 1) {
-                    output[j] += message[j] ^ c_nodes[i];
+
+            if (satisfied == 0){
+                itercount = iter +1;
+                break;
+            }
+
+            for (j = 0; j < BLOCKSIZE; ++j) {
+                if (v_nodes[j] > (PARITYCHECKS+1)/2){
+                	decode[j] = 1;
+                } else if (v_nodes[j] < (PARITYCHECKS+1)/2){
+                	decode[j] = 0;
                 }
+                v_nodes[j] = decode[j];
             }
-            if (c_nodes[i] == 1){
-                satisfied = false;
-            }
-        }
-        if (satisfied){
-            *iterations = iter +1;
-            break;
-        }
-        for (int j = 0; j < MSGLEN; ++j) {
-            int div = 1;
-            for (int i = 0; i < HROWS; ++i) {
-                div += h_matrix[i][j];
-            }
-            float v = (float)output[j] /(float) div;
-            if (v > 0.5){
-                output[j] = 1;
-            } else {
-                output[j] = 0;
-            }
-        }
-        for (int i = 0; i < MSGLEN; ++i) {
-            message[i] = output[i];
-        }
+    	}
+    }
+    *iterations = itercount;
+    for (j = 0; j < BLOCKSIZE; ++j) {
+    	output[j] = decode[j];
     }
 }
