@@ -5,11 +5,8 @@
 
 #define HARDMAXITER 16
 
-void hw_u32_array_to_float(unsigned int input[BLOCKSIZE], float *result);
-void hw_u32_to_float(unsigned int val, float *res);
 
-
-void calculateBits(float prob0[BLOCKSIZE], float prob1[BLOCKSIZE], int *bits, short *c){
+void calculateBits(float prob0[BLOCKSIZE], float prob1[BLOCKSIZE], volatile int *bits, short *c){
     int change = 0;
     for (int i = 0; i < BLOCKSIZE; ++i) {
         if (prob0[i] > prob1[i]){
@@ -36,45 +33,53 @@ void sumProductDecoding(int max_iter, int endsame, float message[BLOCKSIZE], int
 #pragma HLS INTERFACE s_axilite port=max_iter bundle=CTRLS
 #pragma HLS INTERFACE s_axilite port=return bundle=CTRLS
 
-    float prob0[BLOCKSIZE];
-    float prob1[BLOCKSIZE];
+    float prob0[BLOCKSIZE] = {0};
+    float prob1[BLOCKSIZE] = {0};
 
     //float messagef[BLOCKSIZE];
-    int messaged[BLOCKSIZE];
+    int messaged[BLOCKSIZE] = {0};
 
-    float deltaP[BLOCKSIZE][PARITYCHECKS];
+    float deltaP[BLOCKSIZE][PARITYCHECKS] = {0};
+#pragma HLS ARRAY_PARTITION dim=2 type=complete variable=deltaP
 
-    float Q0[BLOCKSIZE][PARITYCHECKS];
-    float Q1[BLOCKSIZE][PARITYCHECKS];
+    float Q0[BLOCKSIZE][PARITYCHECKS] = {0};
+    float Q1[BLOCKSIZE][PARITYCHECKS] = {0};
 
-    short i;
-    short i2;
-    short j;
-    short j2;
-    short change = 0;
+    short i = 0;
+    short i2 = 0;
+    short j = 0;
+    short j2 = 0;
+    //short change = 0;
 
 
     int maxi = max_iter;
     int itercount = 0;
 
-    // convert message:
-    //hw_u32_array_to_float(message, messagef);
 
 
     // init arrays
-    for (j = 0; j < BLOCKSIZE; ++j) {
-        messaged[j] = 0;
+    init:for (j = 0; j < BLOCKSIZE; ++j) {
         float prob = (float)(1 / (1 + expf((2 * message[j]) / (float)SIGMA)));
         prob1[j] = prob;
         prob0[j] = (float)(1 - prob);
-        for (i = 0; i < PARITYCHECKS; ++i) {
+
+        //init msg.
+        if (prob < 0.5){
+            messaged[j] = 0;
+        } else {
+            messaged[j] = 1;
+        }
+
+        init_deltaP:for (i = 0; i < PARITYCHECKS; ++i) {
             // DeltaP - First time out of the main loop..
             deltaP[j][i] = 1 - prob - prob;
         }
     }
 
     // get original message
-    calculateBits(prob0, prob1, messaged, &change);
+    //calculateBits(prob0, prob1, messaged, &change);
+
+
 
     // init P matrix's
     /*
@@ -88,14 +93,16 @@ void sumProductDecoding(int max_iter, int endsame, float message[BLOCKSIZE], int
     int endonsames = endsame;
 
     // actual algorithm
-    for (int iter = 0; iter < HARDMAXITER; ++iter) {
+    main_loop:for (int iter = 0; iter < HARDMAXITER; ++iter) {
+
     	if (iter < maxi){
 			// Q:s
-			for (j = 0; j < BLOCKSIZE; ++j){
+			Qs:for (j = 0; j < BLOCKSIZE; ++j){
 				for (i = 0; i < PARITYCHECKS; ++i) {
 					float  deltaQ = 1;
+#pragma HLS PIPELINE II=7
 					int row = h_matrix[j][i];
-					for (j2 = 0; j2 < BLOCKSIZE; ++j2) {
+					get_deltaPs:for (j2 = 0; j2 < BLOCKSIZE; ++j2) {
 						for (i2 = 0; i2 < PARITYCHECKS; ++i2) {
 							if (h_matrix[j2][i2] == row && j != j2) {
 								deltaQ *= deltaP[j2][i2];
@@ -107,7 +114,7 @@ void sumProductDecoding(int max_iter, int endsame, float message[BLOCKSIZE], int
 				}
 			}
 			// getting probabilities
-			for (j = 0; j < BLOCKSIZE; ++j) {
+			probabilities:for (j = 0; j < BLOCKSIZE; ++j) {
 				for (i = 0; i < PARITYCHECKS; ++i) {
 					float prob0matrix = prob0[j];
 					float prob1matrix = prob1[j];
@@ -120,15 +127,16 @@ void sumProductDecoding(int max_iter, int endsame, float message[BLOCKSIZE], int
 					//scale
 					float sum = (float)(prob0matrix + prob1matrix);
 					if (sum != 0) {
-						prob0matrix = (float)(prob0matrix / sum);
-						prob1matrix = (float)(prob1matrix / sum);
+						float factor = (float)1 / sum;
+						prob0matrix = (float)(prob0matrix * factor);
+						prob1matrix = (float)(prob1matrix * factor);
 					}
 					//delta P
 					deltaP[j][i] = prob0matrix - prob1matrix;
 				}
 			}
 			//new P's
-			for (j = 0; j < BLOCKSIZE; ++j) {
+			new_ps:for (j = 0; j < BLOCKSIZE; ++j) {
 				float p0 = prob0[j];
 				float p1 = prob1[j];
 				for (i = 0; i < PARITYCHECKS; ++i) {
@@ -149,7 +157,23 @@ void sumProductDecoding(int max_iter, int endsame, float message[BLOCKSIZE], int
 
 			}
 			// Check ending conditions
-			calculateBits(prob0, prob1, messaged, &change);
+			//calculateBits(prob0, prob1, messaged, &change);
+
+		    int change = 0;
+		    check_result:for (int i = 0; i < BLOCKSIZE; ++i) {
+		        if (prob0[i] > prob1[i]){
+		            if (messaged[i] == 1) {
+		                change += 1;
+		            }
+		            messaged[i] = 0;
+		        } else {
+		            if (messaged[i] == 0) {
+		                change += 1;
+		            }
+		            messaged[i] = 1;
+		        }
+		    }
+
 
 			if (change == 0){
 				if (same >= endonsames-1){
@@ -164,29 +188,8 @@ void sumProductDecoding(int max_iter, int endsame, float message[BLOCKSIZE], int
     }
     // set endvalues.
     *iterations = itercount;
-    for (j = 0; j < BLOCKSIZE; ++j) {
+    endloop:for (j = 0; j < BLOCKSIZE; ++j) {
         decodedmsg[j] = messaged[j];
     }
 }
 
-
-void hw_u32_array_to_float(unsigned int input[BLOCKSIZE], float *result) {
-    for (int i = 0; i < BLOCKSIZE; ++i){
-        float res = 0;
-        hw_u32_to_float(input[i], &res);
-        result[i] = res;
-    }
-}
-
-
-void hw_u32_to_float(unsigned int val, float *res) {
-    union {
-        float val_float;
-        unsigned char bytes[4];
-    } data;
-    data.bytes[3] = (val >> (8 * 3)) & 0xff;
-    data.bytes[2] = (val >> (8 * 2)) & 0xff;
-    data.bytes[1] = (val >> (8 * 1)) & 0xff;
-    data.bytes[0] = (val >> (8 * 0)) & 0xff;
-    *res = data.val_float;
-}
