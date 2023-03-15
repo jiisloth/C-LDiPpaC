@@ -97,7 +97,10 @@ int run_case(Testcase custard){
         //hardDecisionDecoding(MAXITER, custard.receivedhard, output, iterations);
     }
 
-    if (itercount == 0){
+    if (itercount < 0){
+        printfv(1,"- Hardware maximum iterations reached. (%d)\n", -itercount);
+    }
+    else if (itercount == 0){
         printfv(1,"- Max iterations reached. (%d)\n", MAXITER);
     } else {
         printfv(1,"- Finished on iteration # %d.\n", itercount);

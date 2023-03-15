@@ -26,29 +26,27 @@ void calculateBits(float prob0[BLOCKSIZE], float prob1[BLOCKSIZE], volatile int 
 
 void sumProductDecoding(int max_iter, int endsame, float message[BLOCKSIZE], int decodedmsg[BLOCKSIZE], int *iterations) {
 
-#pragma HLS INTERFACE s_axilite port=iterations bundle=CTRLS
-#pragma HLS INTERFACE s_axilite port=decodedmsg bundle=CTRLS
-#pragma HLS INTERFACE s_axilite port=message bundle=CTRLS
-#pragma HLS INTERFACE s_axilite port=endsame bundle=CTRLS
-#pragma HLS INTERFACE s_axilite port=max_iter bundle=CTRLS
-#pragma HLS INTERFACE s_axilite port=return bundle=CTRLS
+#pragma HLS INTERFACE s_axilite port=iterations //bundle=CTRLS
+#pragma HLS INTERFACE s_axilite port=decodedmsg //bundle=CTRLS
+#pragma HLS INTERFACE s_axilite port=message //bundle=CTRLS
+#pragma HLS INTERFACE s_axilite port=endsame //bundle=CTRLS
+#pragma HLS INTERFACE s_axilite port=max_iter //bundle=CTRLS
+#pragma HLS INTERFACE s_axilite port=return //bundle=CTRLS
 
-    float prob0[BLOCKSIZE] = {0};
-    float prob1[BLOCKSIZE] = {0};
+    float prob0[BLOCKSIZE];
+    float prob1[BLOCKSIZE];
 
     //float messagef[BLOCKSIZE];
-    int messaged[BLOCKSIZE] = {0};
+    volatile int messaged[BLOCKSIZE];
 
-    float deltaP[BLOCKSIZE][PARITYCHECKS] = {0};
+    float deltaP[BLOCKSIZE][PARITYCHECKS];
 #pragma HLS ARRAY_PARTITION dim=2 type=complete variable=deltaP
 
-    float Q0[BLOCKSIZE][PARITYCHECKS] = {0};
-    float Q1[BLOCKSIZE][PARITYCHECKS] = {0};
 
-    short i = 0;
-    short i2 = 0;
-    short j = 0;
-    short j2 = 0;
+    int i = 0;
+    int i2 = 0;
+    int j = 0;
+    int j2 = 0;
     //short change = 0;
 
 
@@ -58,7 +56,8 @@ void sumProductDecoding(int max_iter, int endsame, float message[BLOCKSIZE], int
 
 
     // init arrays
-    init:for (j = 0; j < BLOCKSIZE; ++j) {
+    init:
+	for (j = 0; j < BLOCKSIZE; ++j) {
         float prob = (float)(1 / (1 + expf((2 * message[j]) / (float)SIGMA)));
         prob1[j] = prob;
         prob0[j] = (float)(1 - prob);
@@ -70,7 +69,8 @@ void sumProductDecoding(int max_iter, int endsame, float message[BLOCKSIZE], int
             messaged[j] = 1;
         }
 
-        init_deltaP:for (i = 0; i < PARITYCHECKS; ++i) {
+        init_deltaP:
+		for (i = 0; i < PARITYCHECKS; ++i) {
             // DeltaP - First time out of the main loop..
             deltaP[j][i] = 1 - prob - prob;
         }
@@ -93,31 +93,44 @@ void sumProductDecoding(int max_iter, int endsame, float message[BLOCKSIZE], int
     int endonsames = endsame;
 
     // actual algorithm
-    main_loop:for (int iter = 0; iter < HARDMAXITER; ++iter) {
-
+    main_loop:
+	for (int iter = 0; iter < HARDMAXITER; ++iter) {
     	if (iter < maxi){
+    	    float Q0[BLOCKSIZE][PARITYCHECKS];
+    	    float Q1[BLOCKSIZE][PARITYCHECKS];
 			// Q:s
-			Qs:for (j = 0; j < BLOCKSIZE; ++j){
+    	    float tQ[CNODES];
+#pragma HLS ARRAY_PARTITION type=complete variable=tQ
+    	    initQ:
+    	    for (int c = 0; c < CNODES; ++c){
+    	    	tQ[c] = 1;
+    	    }
+			Cj:
+    	    for (j = 0; j < BLOCKSIZE; ++j){
+				Ci:
 				for (i = 0; i < PARITYCHECKS; ++i) {
-					float  deltaQ = 1;
-#pragma HLS PIPELINE II=7
-					int row = h_matrix[j][i];
-					get_deltaPs:for (j2 = 0; j2 < BLOCKSIZE; ++j2) {
-						for (i2 = 0; i2 < PARITYCHECKS; ++i2) {
-							if (h_matrix[j2][i2] == row && j != j2) {
-								deltaQ *= deltaP[j2][i2];
-							}
-						}
-					}
+#pragma HLS PIPELINE II=5
+					tQ[h_matrix[j][i]] *= deltaP[j][i];
+				}
+			}
+
+			Qj:
+			for (j = 0; j < BLOCKSIZE; ++j){
+				Qi:
+				for (i = 0; i < PARITYCHECKS; ++i) {
+					float  deltaQ = (float)(tQ[h_matrix[j][i]]/deltaP[j][i]);
 					Q0[j][i] = (float)(1.0+deltaQ);
 					Q1[j][i] = (float)(1.0-deltaQ);
 				}
 			}
 			// getting probabilities
-			probabilities:for (j = 0; j < BLOCKSIZE; ++j) {
+			dPj:
+			for (j = 0; j < BLOCKSIZE; ++j) {
+				dPi:
 				for (i = 0; i < PARITYCHECKS; ++i) {
 					float prob0matrix = prob0[j];
 					float prob1matrix = prob1[j];
+					pmi:
 					for (i2 = 0; i2 < PARITYCHECKS; ++i2) {
 						if (i != i2) {
 							prob0matrix = (float)(prob0matrix * Q0[j][i2]);
@@ -127,7 +140,7 @@ void sumProductDecoding(int max_iter, int endsame, float message[BLOCKSIZE], int
 					//scale
 					float sum = (float)(prob0matrix + prob1matrix);
 					if (sum != 0) {
-						float factor = (float)1 / sum;
+						float factor = (float)(1 / sum);
 						prob0matrix = (float)(prob0matrix * factor);
 						prob1matrix = (float)(prob1matrix * factor);
 					}
@@ -136,10 +149,13 @@ void sumProductDecoding(int max_iter, int endsame, float message[BLOCKSIZE], int
 				}
 			}
 			//new P's
-			new_ps:for (j = 0; j < BLOCKSIZE; ++j) {
+			pj:
+			for (j = 0; j < BLOCKSIZE; ++j) {
 				float p0 = prob0[j];
 				float p1 = prob1[j];
+				pi:
 				for (i = 0; i < PARITYCHECKS; ++i) {
+					pif:
 					for ( i2 = 0; i2 < PARITYCHECKS; ++i2) {
 						p0 = (float)(p0 * Q0[j][i2]);
 						p1 = (float)(p1 * Q1[j][i2]);
@@ -149,8 +165,9 @@ void sumProductDecoding(int max_iter, int endsame, float message[BLOCKSIZE], int
 				//scale
 				float sum = (float)(p0 + p1);
 				if (sum != 0) {
-					p0 = (float)(p0 / sum);
-					p1 = (float)(p1 / sum);
+					float factor = (float)(1 / sum);
+					p0 = (float)(p0 * factor);
+					p1 = (float)(p1 * factor);
 				}
 				prob0[j] = p0;
 				prob1[j] = p1;
@@ -160,7 +177,8 @@ void sumProductDecoding(int max_iter, int endsame, float message[BLOCKSIZE], int
 			//calculateBits(prob0, prob1, messaged, &change);
 
 		    int change = 0;
-		    check_result:for (int i = 0; i < BLOCKSIZE; ++i) {
+		    check_result:
+			for (i = 0; i < BLOCKSIZE; ++i) {
 		        if (prob0[i] > prob1[i]){
 		            if (messaged[i] == 1) {
 		                change += 1;
@@ -187,8 +205,13 @@ void sumProductDecoding(int max_iter, int endsame, float message[BLOCKSIZE], int
     	}
     }
     // set endvalues.
+	if (itercount == 0 && maxi > HARDMAXITER){
+		// Tells that Hard max was reached.
+		itercount == -HARDMAXITER;
+	}
     *iterations = itercount;
-    endloop:for (j = 0; j < BLOCKSIZE; ++j) {
+    endloop:
+	for (j = 0; j < BLOCKSIZE; ++j) {
         decodedmsg[j] = messaged[j];
     }
 }

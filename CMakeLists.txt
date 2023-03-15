@@ -3,5 +3,5 @@ project(LDPC C)
 
 set(CMAKE_C_STANDARD 99)
 
-add_executable(LDPC Csandbox.c)
+add_executable(LDPC test_mem.c)
 target_link_libraries(LDPC m)
